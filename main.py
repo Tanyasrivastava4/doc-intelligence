@@ -1,9 +1,12 @@
-# Document Intelligence System - Phase 6 CI/CD test
 from fastapi import FastAPI, Request
 from google.cloud import storage, documentai
 from rag_engine import store_document, search_documents
 from gemini_client import answer_question
-import base64, json
+from router_agent import router_agent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai.types import Content, Part
+import base64, json, asyncio
 
 app = FastAPI()
 
@@ -11,14 +14,19 @@ PROJECT_ID = "doc-intelligence-495409"
 LOCATION = "us"
 PROCESSOR_ID = "9e1cad2bfbaf89d5"
 
+session_service = InMemorySessionService()
+runner = Runner(
+    agent=router_agent,
+    app_name="doc-intelligence",
+    session_service=session_service
+)
+
 def extract_text(bucket_name, file_name):
     storage_client = storage.Client()
     bucket = storage_client.get_bucket(bucket_name)
     content = bucket.blob(file_name).download_as_bytes()
-    
     client = documentai.DocumentProcessorServiceClient()
     name = f"projects/{PROJECT_ID}/locations/{LOCATION}/processors/{PROCESSOR_ID}"
-    
     result = client.process_document(request=documentai.ProcessRequest(
         name=name,
         raw_document=documentai.RawDocument(content=content, mime_type="application/pdf")
@@ -28,7 +36,6 @@ def extract_text(bucket_name, file_name):
 @app.get("/")
 def health():
     return {"status": "running"}
-
 
 @app.post("/process")
 async def process_file(request: Request):
@@ -58,3 +65,22 @@ async def ask(request: Request):
     chunks = search_documents(question, top_k=3)
     answer = answer_question(question, chunks)
     return {"question": question, "answer": answer}
+
+@app.post("/agent")
+async def agent_endpoint(request: Request):
+    body = await request.json()
+    user_message = body.get("message", "")
+    session = await session_service.create_session(
+        app_name="doc-intelligence",
+        user_id="user1"
+    )
+    content = Content(parts=[Part(text=user_message)])
+    response_text = ""
+    async for event in runner.run_async(
+        user_id="user1",
+        session_id=session.id,
+        new_message=content
+    ):
+        if event.is_final_response():
+            response_text = event.response.text
+    return {"response": response_text}
