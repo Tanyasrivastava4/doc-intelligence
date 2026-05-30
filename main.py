@@ -7,6 +7,8 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai.types import Content, Part
 import base64, json, asyncio
+import os
+os.environ["GOOGLE_API_KEY"] = os.environ.get("GEMINI_API_KEY", "")
 
 app = FastAPI()
 
@@ -81,6 +83,8 @@ async def agent_endpoint(request: Request):
         session_id=session.id,
         new_message=content
     ):
-        if event.is_final_response():
-            response_text = event.response.text
+        if hasattr(event, 'content') and event.content:
+            for part in event.content.parts:
+                if hasattr(part, 'text') and part.text:
+                    response_text = part.text
     return {"response": response_text}
