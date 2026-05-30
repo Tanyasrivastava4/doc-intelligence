@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+google-cloud-storage
+google-cloud-documentai
+python-dotenv
+chromadb 
+sentence-transformers
+google-generativeai
